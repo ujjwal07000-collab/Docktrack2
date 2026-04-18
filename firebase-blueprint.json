@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Information about a user including their role and department",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["employee", "manager", "admin"] },
+        "department": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["username", "email", "role", "department", "createdAt"]
+    },
+    "Document": {
+      "title": "Document",
+      "description": "A document uploaded for tracking and approval",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "uploadedBy": { "type": "string" },
+        "uploaderName": { "type": "string" },
+        "department": { "type": "string" },
+        "status": { "type": "string", "enum": ["Submitted", "Under Review", "Approved", "Rejected"] },
+        "currentAssignee": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["title", "fileUrl", "uploadedBy", "uploaderName", "department", "status", "createdAt"]
+    },
+    "DocumentLog": {
+      "title": "Document Log",
+      "description": "A history entry for document status changes and actions",
+      "type": "object",
+      "properties": {
+        "documentId": { "type": "string" },
+        "updatedBy": { "type": "string" },
+        "updaterName": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["documentId", "updatedBy", "updaterName", "action", "details", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles keyed by UID"
+    },
+    "/documents/{docId}": {
+      "schema": "Document",
+      "description": "Documents tracked in the system"
+    },
+    "/documents/{docId}/logs/{logId}": {
+      "schema": "DocumentLog",
+      "description": "Activity history for a specific document"
+    }
+  }
+}

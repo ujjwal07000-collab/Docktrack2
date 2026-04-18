@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function getUserData(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function currentUser() {
+      return getUserData(request.auth.uid);
+    }
+
+    function hasRole(role) {
+      return isSignedIn() && currentUser().role == role;
+    }
+
+    function isOwner(userIdField) {
+      return isSignedIn() && request.auth.uid == userIdField;
+    }
+
+    // --- Users Collection ---
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if hasRole('admin') || hasRole('manager');
+      allow create: if isSignedIn() && isOwner(userId) && 
+                      request.resource.data.role == 'employee' && // Default role
+                      request.resource.data.keys().hasAll(['username', 'email', 'role', 'department', 'createdAt']) &&
+                      request.resource.data.keys().size() == 5;
+      allow update: if isOwner(userId) && 
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['username', 'department']);
+    }
+
+    // --- Documents Collection ---
+    match /documents/{docId} {
+      function isValidDocument(data) {
+        return data.title is string && data.title.size() <= 200 &&
+               data.description is string && data.description.size() <= 2000 &&
+               data.fileUrl is string && data.fileUrl.size() <= 1000 &&
+               data.status in ['Submitted', 'Under Review', 'Approved', 'Rejected'] &&
+               data.createdAt == request.time;
+      }
+
+      allow get: if isSignedIn() && (isOwner(resource.data.uploadedBy) || hasRole('admin') || hasRole('manager'));
+      allow list: if isSignedIn() && (resource.data.uploadedBy == request.auth.uid || hasRole('admin') || hasRole('manager'));
+      
+      allow create: if isEmailVerified() && isValidDocument(request.resource.data) &&
+                      isOwner(request.resource.data.uploadedBy);
+
+      allow update: if isEmailVerified() && (
+        // Action: Self Update (Only description/title if still Submitted)
+        (isOwner(resource.data.uploadedBy) && resource.data.status == 'Submitted' && 
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description'])) ||
+        
+        // Action: Manager Review (Status and Assignee)
+        (hasRole('manager') && currentUser().department == resource.data.department &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'currentAssignee'])) ||
+        
+        // Action: Admin Full Access
+        (hasRole('admin'))
+      );
+    }
+
+    // --- Document Logs (Subcollection) ---
+    match /documents/{docId}/logs/{logId} {
+      allow read: if isSignedIn() && (isOwner(get(/databases/$(database)/documents/documents/$(docId)).data.uploadedBy) || hasRole('admin') || hasRole('manager'));
+      allow create: if isSignedIn() && (isOwner(request.resource.data.updatedBy) || hasRole('admin') || hasRole('manager'));
+    }
+  }
+}
